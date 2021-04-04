@@ -102,9 +102,9 @@ struct common_audit_data {
 #ifdef CONFIG_SECURITY_SELINUX
 		struct selinux_audit_data *selinux_audit_data;
 #endif
-#ifdef CONFIG_SECURITY_APPARMOR
+/*#ifdef CONFIG_SECURITY_APPARMOR*/
 		struct apparmor_audit_data *apparmor_audit_data;
-#endif
+/*#endif*/
 	}; /* per LSM data pointer union */
 };
 

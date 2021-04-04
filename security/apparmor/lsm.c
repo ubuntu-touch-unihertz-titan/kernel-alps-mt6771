@@ -40,11 +40,132 @@
 #include "include/procattr.h"
 #include "include/mount.h"
 
+#include <linux/module.h>
+#include <linux/kallsyms.h>
+
 /* Flag indicating whether initialization completed */
 int apparmor_initialized;
 
 DEFINE_PER_CPU(struct aa_buffers, aa_buffers);
 
+#ifdef MODULE
+our_mnt_t _aa_our_mnt;
+__d_path_t _aa__d_path;
+dentry_path_t _aa_dentry_path;
+
+replace_fd_t _aa_replace_fd;
+no_tty_t _aa_no_tty;
+put_filesystem_t _aa_put_filesystem;
+
+audit_string_contains_control_t _aa_audit_string_contains_control;
+audit_log_n_hex_t _aa_audit_log_n_hex;
+audit_log_n_string_t _aa_audit_log_n_string;
+audit_log_untrustedstring_t _aa_audit_log_untrustedstring;
+common_lsm_audit_t _aa_common_lsm_audit;
+
+readlink_copy_t _aa_readlink_copy;
+nd_jump_link_t _aa_nd_jump_link;
+
+typedef const struct cred* (*get_task_cred_t)(struct task_struct *task);
+get_task_cred_t _aa_get_task_cred;
+#define get_task_cred _aa_get_task_cred
+
+static int apparmor_resolve_private_symbols(void)
+{
+	_aa_our_mnt = (our_mnt_t)kallsyms_lookup_name("our_mnt");
+	if (_aa_our_mnt == 0) {
+		pr_err("Unable to find our_mnt\n");
+		return -EINVAL;
+	}
+
+	_aa__d_path = (__d_path_t)kallsyms_lookup_name("__d_path");
+	if (_aa__d_path == 0) {
+		pr_err("Unable to find __d_path");
+		return -EINVAL;
+	}
+
+	_aa_dentry_path = (dentry_path_t)kallsyms_lookup_name("dentry_path");
+	if (_aa_dentry_path == 0) {
+		pr_err("Unable to find dentry_path");
+		return -EINVAL;
+	}
+
+	_aa_replace_fd = (replace_fd_t)kallsyms_lookup_name("replace_fd");
+	if (_aa_replace_fd == 0) {
+		pr_err("Unable to find replace_fd");
+		return -EINVAL;
+	}
+
+	_aa_no_tty = (no_tty_t)kallsyms_lookup_name("no_tty");
+	if (_aa_no_tty == 0) {
+		pr_err("Unable to find no_tty");
+		return -EINVAL;
+	}
+
+	_aa_put_filesystem = (put_filesystem_t)kallsyms_lookup_name("put_filesystem");
+	if (_aa_put_filesystem == 0) {
+		pr_err("Unable to find put_filesystem");
+		return -EINVAL;
+	}
+
+	_aa_audit_string_contains_control = (audit_string_contains_control_t)kallsyms_lookup_name("audit_string_contains_control");
+	if (_aa_audit_string_contains_control == 0) {
+		pr_err("Unable to find audit_string_contains_control");
+		return -EINVAL;
+	}
+
+	_aa_audit_log_n_hex = (audit_log_n_hex_t)kallsyms_lookup_name("audit_log_n_hex");
+	if (_aa_audit_log_n_hex == 0) {
+		pr_err("Unable to find audit_log_n_hex");
+		return -EINVAL;
+	}
+
+	_aa_audit_log_n_string = (audit_log_n_string_t)kallsyms_lookup_name("audit_log_n_string");
+	if (_aa_audit_log_n_string == 0) {
+		pr_err("Unable to find audit_log_n_string");
+		return -EINVAL;
+	}
+
+	_aa_audit_log_untrustedstring = (audit_log_untrustedstring_t)kallsyms_lookup_name("audit_log_untrustedstring");
+	if (_aa_audit_log_untrustedstring == 0) {
+		pr_err("Unable to find audit_log_untrustedstring");
+		return -EINVAL;
+	}
+
+	_aa_common_lsm_audit = (common_lsm_audit_t)kallsyms_lookup_name("common_lsm_audit");
+	if (_aa_common_lsm_audit == 0) {
+		pr_err("Unable to find common_lsm_audit");
+		return -EINVAL;
+	}
+
+	_aa_readlink_copy = (readlink_copy_t)kallsyms_lookup_name("readlink_copy");
+	if (_aa_readlink_copy == 0) {
+		pr_err("Unable to find readlink_copy\n");
+		return -EINVAL;
+	}
+
+	_aa_nd_jump_link = (nd_jump_link_t)kallsyms_lookup_name("nd_jump_link");
+	if (_aa_nd_jump_link == 0) {
+		pr_err("Unable to find nd_jump_link\n");
+		return -EINVAL;
+	}
+
+	_aa_get_task_cred = (get_task_cred_t)kallsyms_lookup_name("get_task_cred");
+	if (_aa_get_task_cred == 0) {
+		pr_err("Unable to find get_task_cred\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int _aa_security_module_enable(const char *module)
+{
+	return true;
+}
+#define security_module_enable _aa_security_module_enable
+
+#endif // #ifdef MODULE
 
 /*
  * LSM hook functions
@@ -85,6 +206,9 @@ static int apparmor_cred_prepare(struct cred *new, const struct cred *old,
 
 	if (!ctx)
 		return -ENOMEM;
+
+	if (!cred_ctx(old))
+		cred_ctx((struct cred *)old) = aa_alloc_task_context(gfp);
 
 	aa_dup_task_context(ctx, cred_ctx(old));
 	cred_ctx(new) = ctx;
@@ -394,6 +518,9 @@ static int apparmor_file_open(struct file *file, const struct cred *cred)
 	struct aa_label *label;
 	int error = 0;
 
+	if (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label || !fctx)
+		return error;
+
 	if (!path_mediated_fs(file->f_path.dentry))
 		return 0;
 
@@ -425,9 +552,13 @@ static int apparmor_file_open(struct file *file, const struct cred *cred)
 static int apparmor_file_alloc_security(struct file *file)
 {
 	int error = 0;
+	struct aa_label *label;
+
+	if (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label)
+		return error;
 
 	/* freed by apparmor_file_free_security */
-	struct aa_label *label = begin_current_label_crit_section();
+	label = begin_current_label_crit_section();
 	file->f_security = aa_alloc_file_ctx(label, GFP_KERNEL);
 	if (!file_ctx(file))
 		error = -ENOMEM;
@@ -445,6 +576,9 @@ static int common_file_perm(const char *op, struct file *file, u32 mask)
 {
 	struct aa_label *label;
 	int error = 0;
+
+	if (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label || !file_ctx(file))
+		return error;
 
 	/* don't reaudit files closed during inheritance */
 	if (file->f_path.dentry == aa_null.dentry)
@@ -580,6 +714,9 @@ static int apparmor_getprocattr(struct task_struct *task, char *name,
 	struct aa_task_ctx *ctx = cred_ctx(cred);
 	struct aa_label *label = NULL;
 
+	if (!ctx)
+		goto put_cred;
+
 	if (strcmp(name, "current") == 0)
 		label = aa_get_newest_label(ctx->label);
 	else if (strcmp(name, "prev") == 0  && ctx->previous)
@@ -593,6 +730,7 @@ static int apparmor_getprocattr(struct task_struct *task, char *name,
 		error = aa_getprocattr(label, value);
 
 	aa_put_label(label);
+put_cred:
 	put_cred(cred);
 
 	return error;
@@ -677,11 +815,17 @@ fail:
  */
 static void apparmor_bprm_committing_creds(struct linux_binprm *bprm)
 {
-	struct aa_label *label = aa_current_raw_label();
-	struct aa_task_ctx *new_ctx = cred_ctx(bprm->cred);
+	struct aa_label *label;
+	struct aa_task_ctx *new_ctx;
+
+	if (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label)
+		return;
+
+	label = aa_current_raw_label();
+	new_ctx = cred_ctx(bprm->cred);
 
 	/* bail out if unconfined or not changing profile */
-	if ((new_ctx->label->proxy == label->proxy) ||
+	if (!new_ctx || (new_ctx->label->proxy == label->proxy) ||
 	    (unconfined(new_ctx->label)))
 		return;
 
@@ -736,16 +880,24 @@ static int apparmor_task_kill(struct task_struct *target, struct siginfo *info,
 	return error;
 }
 
+#ifdef MODULE
+#undef LSM_HOOK_INIT
+#define LSM_HOOK_INIT(HEAD, HOOK) \
+	{ .head = (void*)(offsetof(struct security_hook_heads, HEAD)), .hook = { .HEAD = HOOK } }
+#endif
+
 static struct security_hook_list apparmor_hooks[] __lsm_ro_after_init = {
-	LSM_HOOK_INIT(ptrace_access_check, apparmor_ptrace_access_check),
-	LSM_HOOK_INIT(ptrace_traceme, apparmor_ptrace_traceme),
+	/*LSM_HOOK_INIT(ptrace_access_check, apparmor_ptrace_access_check),
+	LSM_HOOK_INIT(ptrace_traceme, apparmor_ptrace_traceme),*/
 	LSM_HOOK_INIT(capget, apparmor_capget),
-	LSM_HOOK_INIT(capable, apparmor_capable),
+	/*LSM_HOOK_INIT(capable, apparmor_capable),*/
 
 	LSM_HOOK_INIT(sb_mount, apparmor_sb_mount),
 	LSM_HOOK_INIT(sb_umount, apparmor_sb_umount),
 	LSM_HOOK_INIT(sb_pivotroot, apparmor_sb_pivotroot),
 
+	/* depends on CONFIG_SECURITY_PATH */
+#ifndef MODULE
 	LSM_HOOK_INIT(path_link, apparmor_path_link),
 	LSM_HOOK_INIT(path_unlink, apparmor_path_unlink),
 	LSM_HOOK_INIT(path_symlink, apparmor_path_symlink),
@@ -756,7 +908,8 @@ static struct security_hook_list apparmor_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(path_chmod, apparmor_path_chmod),
 	LSM_HOOK_INIT(path_chown, apparmor_path_chown),
 	LSM_HOOK_INIT(path_truncate, apparmor_path_truncate),
-	LSM_HOOK_INIT(inode_getattr, apparmor_inode_getattr),
+#endif
+	/*LSM_HOOK_INIT(inode_getattr, apparmor_inode_getattr),*/
 
 	LSM_HOOK_INIT(file_open, apparmor_file_open),
 	LSM_HOOK_INIT(file_receive, apparmor_file_receive),
@@ -1033,6 +1186,18 @@ static int __init set_init_ctx(void)
 	ctx->label = aa_get_label(ns_unconfined(root_ns));
 	cred_ctx(cred) = ctx;
 
+	if (current->real_parent) {
+		rcu_read_lock();
+		cred = (struct cred *)current->real_parent->real_cred;
+
+		ctx = aa_alloc_task_context(GFP_KERNEL);
+		if (ctx) {
+			ctx->label = aa_get_label(ns_unconfined(root_ns));
+			cred_ctx(cred) = ctx;
+		}
+		rcu_read_unlock();
+	}
+
 	return 0;
 }
 
@@ -1113,9 +1278,105 @@ static inline int apparmor_init_sysctl(void)
 }
 #endif /* CONFIG_SYSCTL */
 
+#ifdef MODULE
+uint64_t get_page_address_64(uint64_t addr)
+{
+    int bits_page_offset = 12;
+    return (addr >> bits_page_offset) << bits_page_offset;
+}
+
+uint64_t get_adrp_add_va(unsigned char *adrp_loc, uint64_t va){
+    uint32_t instr, instr2, immlo, immhi;
+    int32_t value;
+    int64_t value_64;
+
+    //imm12 64 bits if sf = 1, else 32 bits
+    uint64_t imm12;
+    instr = *(uint32_t *)adrp_loc;
+    immlo = (0x60000000 & instr) >> 29;
+    immhi = (0xffffe0 & instr) >> 3;
+    value = (immlo | immhi) << 12;
+    //sign extend value to 64 bits
+    value_64 = value;
+
+    //get the imm value from add instruction
+    instr2 = *(uint32_t *)(adrp_loc + 4);
+    imm12 = (instr2 & 0x3ffc00) >> 10;
+    if (instr2 & 0xc00000)
+    {
+        imm12 <<= 12;
+    }
+
+    return get_page_address_64(va) + value_64 + imm12;
+}
+
+unsigned char* find_security_hook_heads(void) {
+	unsigned char *adrp_loc;
+	uint32_t adrp_value;
+	uint32_t add_value;
+	unsigned char* _security_hook_heads;
+
+    /* struct list_head binder_set_context_mgr is first inside struct security_hook_heads,
+     * so security_binder_set_context_mgr effectively keeps offset to the beginning of that struct */
+	unsigned char *_security_binder_set_context_mgr = (unsigned char*)kallsyms_lookup_name("security_binder_set_context_mgr");
+	if (_security_binder_set_context_mgr == 0) {
+		pr_err("Unable to find security_binder_set_context_mgr\n");
+		return 0;
+	}
+	print_hex_dump(KERN_INFO, "security_binder_set_context_mgr: ", DUMP_PREFIX_OFFSET, 16, 1, _security_binder_set_context_mgr, 32, false);
+
+	/* 0x0000000000000000:  FD 7B BD A9    stp  x29, x30, [sp, #-0x30]!
+		* 0x0000000000000004:  F5 0B 00 F9    str  x21, [sp, #0x10]
+		* 0x0000000000000008:  F4 4F 02 A9    stp  x20, x19, [sp, #0x20]
+		* 0x000000000000000c:  FD 03 00 91    mov  x29, sp
+		* 0x0000000000000010:  F4 7A 00 B0    adrp x20, #0xf5d000
+		* 0x0000000000000014:  94 C2 09 91    add  x20, x20, #0x270
+		*/
+
+	adrp_loc = _security_binder_set_context_mgr + 0x10;
+	adrp_value = ((uint32_t*)adrp_loc)[0];
+	add_value = ((uint32_t*)adrp_loc)[1];
+	pr_info("adrp_loc: %px, adrp_value: %04x, add_value: %04x\n", adrp_loc, adrp_value, add_value);
+
+	_security_hook_heads = (unsigned char*)get_adrp_add_va(adrp_loc, (uint64_t)adrp_loc);
+	pr_info("_security_hook_heads: %px\n", _security_hook_heads);
+
+	return _security_hook_heads;
+}
+
+void _aa_security_add_hooks(struct security_hook_list *hooks, int count, char *lsm)
+{
+	int i;
+	unsigned char* _security_hook_heads = find_security_hook_heads();
+
+	if (_security_hook_heads == 0) {
+		pr_err("Unable to find security_hook_heads\n");
+		return;
+	}
+
+	for (i = 0; i < count; i++) {
+		hooks[i].lsm = lsm;
+		hooks[i].head = (struct list_head*)(_security_hook_heads + (uint64_t)(hooks[i].head));
+		pr_info("_security_hook_heads: %px, hooks[%d].head: %px\n", _security_hook_heads, i, hooks[i].head);
+		list_add_tail_rcu(&hooks[i].list, hooks[i].head);
+	}
+}
+
+#define security_add_hooks _aa_security_add_hooks
+
+#endif // #ifdef MODULE
+
 static int __init apparmor_init(void)
 {
 	int error;
+
+#ifdef MODULE
+	error = apparmor_resolve_private_symbols();
+	if (error) {
+		AA_ERROR("Unable to resolve kernel symbols for AppArmor as module\n");
+		return 0;
+	}
+#endif
 
 	if (!apparmor_enabled || !security_module_enable("apparmor")) {
 		aa_info_message("AppArmor disabled by boot time parameter");
@@ -1179,4 +1440,23 @@ alloc_out:
 	return error;
 }
 
+#ifndef MODULE
 security_initcall(apparmor_init);
+#endif
+
+int __init securityfs_init(void);
+int __init aa_create_aafs(void);
+
+#ifdef MODULE
+static int apparmor_module_init(void) {
+    apparmor_init();
+	securityfs_init();
+	aa_create_aafs();
+    return 0;
+}
+
+module_init(apparmor_module_init);
+
+MODULE_DESCRIPTION("Module for printing all kernel symbols");
+MODULE_LICENSE("GPL");
+#endif

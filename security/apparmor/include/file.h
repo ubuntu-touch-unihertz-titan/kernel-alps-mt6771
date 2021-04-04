@@ -21,6 +21,22 @@
 #include "match.h"
 #include "perms.h"
 
+typedef int (*replace_fd_t)(unsigned fd, struct file *file, unsigned flags);
+extern replace_fd_t _aa_replace_fd;
+
+typedef void (*no_tty_t)(void);
+extern no_tty_t _aa_no_tty;
+
+typedef void (*put_filesystem_t)(struct file_system_type *fs);
+extern put_filesystem_t _aa_put_filesystem;
+
+#ifdef MODULE
+#define replace_fd _aa_replace_fd
+#define no_tty _aa_no_tty
+#define put_filesystem _aa_put_filesystem
+#endif
+
+
 struct aa_profile;
 struct path;
 

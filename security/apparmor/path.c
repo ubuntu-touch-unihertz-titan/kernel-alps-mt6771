@@ -25,6 +25,12 @@
 #include "include/path.h"
 #include "include/policy.h"
 
+#ifdef MODULE
+#define our_mnt _aa_our_mnt
+#define __d_path _aa__d_path
+#define dentry_path _aa_dentry_path
+#endif
+
 /* modified from dcache.c */
 static int prepend(char **buffer, int buflen, const char *str, int namelen)
 {

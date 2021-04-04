@@ -24,6 +24,33 @@
 #include "file.h"
 #include "label.h"
 
+typedef bool (*audit_string_contains_control_t)(const char *string, size_t len);
+typedef void (*audit_log_n_hex_t)(struct audit_buffer *ab, const unsigned char *buf, size_t len);
+typedef void (*audit_log_n_string_t)(struct audit_buffer *ab, const char *buf, size_t n);
+typedef void (*audit_log_untrustedstring_t)(struct audit_buffer *ab, const char *string);
+extern audit_string_contains_control_t _aa_audit_string_contains_control;
+extern audit_log_n_hex_t _aa_audit_log_n_hex;
+extern audit_log_n_string_t _aa_audit_log_n_string;
+extern audit_log_untrustedstring_t _aa_audit_log_untrustedstring;
+
+typedef void (*common_lsm_audit_t)(struct common_audit_data *a,	void (*pre_audit)(struct audit_buffer *, void *),
+                                   void (*post_audit)(struct audit_buffer *, void *));
+extern common_lsm_audit_t _aa_common_lsm_audit;
+
+static inline void _aa_audit_log_string(struct audit_buffer *ab, const char *buf)
+{
+	_aa_audit_log_n_string(ab, buf, strlen(buf));
+}
+
+#ifdef MODULE
+#define audit_string_contains_control _aa_audit_string_contains_control
+#define audit_log_n_hex _aa_audit_log_n_hex
+#define audit_log_n_string _aa_audit_log_n_string
+#define audit_log_untrustedstring _aa_audit_log_untrustedstring
+#define audit_log_string _aa_audit_log_string
+#define common_lsm_audit _aa_common_lsm_audit
+#endif
+
 extern const char *const audit_mode_names[];
 #define AUDIT_MAX_INDEX 5
 enum audit_mode {

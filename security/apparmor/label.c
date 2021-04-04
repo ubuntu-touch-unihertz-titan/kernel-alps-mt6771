@@ -20,7 +20,7 @@
 #include "include/label.h"
 #include "include/policy.h"
 #include "include/secid.h"
-
+#include "include/audit.h"
 
 /*
  * the aa_label represents the set of profiles confining an object

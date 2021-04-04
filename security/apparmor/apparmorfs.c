@@ -40,6 +40,11 @@
 #include "include/resource.h"
 #include "include/policy_unpack.h"
 
+#ifdef MODULE
+#define readlink_copy _aa_readlink_copy
+#define nd_jump_link _aa_nd_jump_link
+#endif
+
 /*
  * The apparmor filesystem interface used for policy load and introspection
  * The interface is split into two main components based on their function
@@ -2439,7 +2444,7 @@ static const struct inode_operations policy_link_iops = {
  *
  * Returns: error on failure
  */
-static int __init aa_create_aafs(void)
+int __init aa_create_aafs(void)
 {
 	struct dentry *dent;
 	int error;
@@ -2527,4 +2532,6 @@ error:
 	return error;
 }
 
+#ifndef MODULE
 fs_initcall(aa_create_aafs);
+#endif

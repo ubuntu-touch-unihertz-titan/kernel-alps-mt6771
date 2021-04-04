@@ -15,6 +15,15 @@
 #ifndef __AA_PATH_H
 #define __AA_PATH_H
 
+typedef bool (*our_mnt_t)(struct vfsmount *mnt);
+extern our_mnt_t _aa_our_mnt;
+
+typedef char* (*__d_path_t)(const struct path *, const struct path *, char *, int);
+extern __d_path_t _aa__d_path;
+
+typedef char* (*dentry_path_t)(struct dentry *, char *, int);
+extern dentry_path_t _aa_dentry_path;
+
 
 enum path_flags {
 	PATH_IS_DIR = 0x1,		/* path is a directory */

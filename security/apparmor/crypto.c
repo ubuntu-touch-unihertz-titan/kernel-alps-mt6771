@@ -126,4 +126,6 @@ static int __init init_profile_hash(void)
 	return 0;
 }
 
+#ifndef MODULE
 late_initcall(init_profile_hash);
+#endif

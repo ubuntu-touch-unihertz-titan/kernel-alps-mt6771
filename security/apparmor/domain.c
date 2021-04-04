@@ -762,7 +762,8 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 		return 0;
 
 	ctx = cred_ctx(bprm->cred);
-	AA_BUG(!ctx);
+	if (!ctx || !ctx->label)
+		return error;
 
 	label = aa_get_newest_label(ctx->label);
 

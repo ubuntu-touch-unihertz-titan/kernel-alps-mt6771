@@ -312,6 +312,11 @@ void securityfs_remove(struct dentry *dentry)
 }
 EXPORT_SYMBOL_GPL(securityfs_remove);
 
+#ifdef MODULE
+char* _aa_lsm_names = "apparmor";
+#define lsm_names _aa_lsm_names
+#endif
+
 #ifdef CONFIG_SECURITY
 static struct dentry *lsm_dentry;
 static ssize_t lsm_read(struct file *filp, char __user *buf, size_t count,
@@ -327,7 +332,7 @@ static const struct file_operations lsm_ops = {
 };
 #endif
 
-static int __init securityfs_init(void)
+int __init securityfs_init(void)
 {
 	int retval;
 
@@ -347,6 +352,8 @@ static int __init securityfs_init(void)
 	return 0;
 }
 
+#ifndef MODULE
 core_initcall(securityfs_init);
+#endif
 MODULE_LICENSE("GPL");
 

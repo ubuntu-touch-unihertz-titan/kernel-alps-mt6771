@@ -15,6 +15,12 @@
 #ifndef __AA_APPARMORFS_H
 #define __AA_APPARMORFS_H
 
+typedef int (*readlink_copy_t)(char __user *, int, const char *);
+extern readlink_copy_t _aa_readlink_copy;
+
+typedef void (*nd_jump_link_t)(struct path *path);
+extern nd_jump_link_t _aa_nd_jump_link;
+
 extern struct path aa_null;
 
 enum aa_sfs_type {
