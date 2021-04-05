@@ -905,6 +905,9 @@ static void apparmor_sk_free_security(struct sock *sk)
 {
 	struct aa_sk_ctx *ctx = SK_CTX(sk);
 
+	if (!ctx)
+		return;
+
 	SK_CTX(sk) = NULL;
 	aa_put_label(ctx->label);
 	aa_put_label(ctx->peer);
@@ -949,7 +952,13 @@ static int apparmor_unix_stream_connect(struct sock *sk, struct sock *peer_sk,
 	struct aa_sk_ctx *new_ctx = SK_CTX(newsk);
 	struct aa_label *label;
 	struct path *path;
-	int error;
+	int error = 0;
+
+	if (!sk_ctx || !peer_ctx || !new_ctx)
+		return error;
+
+	if (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label)
+		return error;
 
 	label = __begin_current_label_crit_section();
 	error = aa_unix_peer_perm(label, OP_CONNECT,
@@ -1026,6 +1035,9 @@ static int apparmor_socket_create(int family, int type, int protocol, int kern)
 	struct aa_label *label;
 	int error = 0;
 
+	if (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label)
+		return error;
+
 	label = begin_current_label_crit_section();
 	if (!(kern || unconfined(label)))
 		error = aa_sock_create_perm(label, family, type, protocol);
@@ -1049,6 +1061,9 @@ static int apparmor_socket_post_create(struct socket *sock, int family,
 {
 	struct aa_label *label;
 
+	if (!kern && (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label))
+		return 0;
+
 	if (kern) {
 		struct aa_ns *ns = aa_get_current_ns();
 
@@ -1060,8 +1075,10 @@ static int apparmor_socket_post_create(struct socket *sock, int family,
 	if (sock->sk) {
 		struct aa_sk_ctx *ctx = SK_CTX(sock->sk);
 
-		aa_put_label(ctx->label);
-		ctx->label = aa_get_label(label);
+		if (ctx) {
+			aa_put_label(ctx->label);
+			ctx->label = aa_get_label(label);
+		}
 	}
 	aa_put_label(label);
 

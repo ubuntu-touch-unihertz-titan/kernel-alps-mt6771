@@ -208,7 +208,10 @@ static int aa_label_sk_perm(struct aa_label *label, const char *op, u32 request,
 int aa_sk_perm(const char *op, u32 request, struct sock *sk)
 {
 	struct aa_label *label;
-	int error;
+	int error = 0;
+
+	if (!current_ctx() || !((struct aa_task_ctx *)current_ctx())->label)
+		return error;
 
 	AA_BUG(!sk);
 	AA_BUG(in_interrupt());
