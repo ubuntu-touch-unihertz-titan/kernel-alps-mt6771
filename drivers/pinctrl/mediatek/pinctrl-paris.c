@@ -49,6 +49,8 @@ static const char * const mtk_gpio_functions[] = {
 	"func12", "func13", "func14", "func15",
 };
 
+struct mtk_pinctrl *pctl = NULL;
+
 static int mtk_pinmux_gpio_request_enable(struct pinctrl_dev *pctldev,
 					  struct pinctrl_gpio_range *range,
 					  unsigned int pin)
@@ -804,6 +806,18 @@ static void mtk_gpio_set(struct gpio_chip *chip, unsigned int gpio, int value)
 	(void)mtk_hw_set_value(hw, desc, PINCTRL_PIN_REG_DO, !!value);
 }
 
+void agold_gpio_set(unsigned gpio, int value)
+{
+	printk("enter agold_gpio_set(%d, %d)\n", gpio, value);
+
+	if (!pctl) {
+		pr_err("pctl does not exist\n");
+		return;
+	}
+
+	return mtk_gpio_set(&pctl->chip, gpio, value);
+}
+
 static int mtk_gpio_direction_input(struct gpio_chip *chip, unsigned int gpio)
 {
 	struct mtk_pinctrl *hw = gpiochip_get_data(chip);
@@ -1029,6 +1043,7 @@ int mtk_paris_pinctrl_probe(struct platform_device *pdev,
 	}
 
 	platform_set_drvdata(pdev, hw);
+	pctl = hw;
 
 	return 0;
 }
