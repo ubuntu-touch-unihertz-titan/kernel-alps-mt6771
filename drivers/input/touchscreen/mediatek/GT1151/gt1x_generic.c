@@ -690,6 +690,19 @@ void gt1x_select_addr(void)
 	GTP_GPIO_OUTPUT(GTP_RST_PORT, 1);
 }
 
+s32 gt1151qm_set_reset_status(void) {
+	s32 ret = 0;
+	char buff[4] = {0xAA, 0x00, 0x56, 0xAA};
+
+	GTP_INFO("Set reset status.\n");
+
+	ret = gt1x_i2c_write(GTP_REG_CMD + 1, &buff[1], 3);
+	if (ret < 0)
+		return ret;
+
+	return gt1x_i2c_write(GTP_REG_CMD, buff, 1);
+}
+
 s32 gt1x_reset_guitar(void)
 {
 	s32 ret = 0;
@@ -712,6 +725,10 @@ s32 gt1x_reset_guitar(void)
 		msleep(50);
 		GTP_GPIO_AS_INT(GTP_INT_PORT);
 	}
+
+	ret = gt1151qm_set_reset_status();
+	if (ret < 0)
+		return ret;
 
 #ifdef CONFIG_GTP_ESD_PROTECT
 	ret = gt1x_init_ext_watchdog();

@@ -31,6 +31,7 @@
 
 #include <linux/regulator/consumer.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 
 #include <linux/suspend.h>
@@ -52,7 +53,9 @@ static int tpd_eint_mode = 1;
 static struct task_struct *thread;
 static struct task_struct *update_thread;
 static struct task_struct *probe_thread;
+#ifdef CONFIG_GTP_AUTO_UPDATE
 static struct notifier_block pm_notifier_block;
+#endif
 static int tpd_polling_time = 50;
 static DECLARE_WAIT_QUEUE_HEAD(waiter);
 static DECLARE_WAIT_QUEUE_HEAD(pm_waiter);
@@ -61,6 +64,8 @@ DECLARE_WAIT_QUEUE_HEAD(init_waiter);
 DEFINE_MUTEX(i2c_access);
 unsigned int touch_irq;
 u8 int_type;
+
+int tpd_en_gpio = -1;
 
 #if (defined(TPD_WARP_START) && defined(TPD_WARP_END))
 static int tpd_wb_start_local[TPD_WARP_CNT] = TPD_WARP_START;
@@ -81,7 +86,7 @@ static int tpd_i2c_remove(struct i2c_client *client);
 static irqreturn_t tpd_eint_interrupt_handler(unsigned int irq,
 							struct irq_desc *desc);
 
-#define GTP_DRIVER_NAME  "gt1x"
+#define GTP_DRIVER_NAME  "gt1151qm"
 static const struct i2c_device_id tpd_i2c_id[] = { {GTP_DRIVER_NAME, 0}, {} };
 static unsigned short force[] = {
 	0, GTP_I2C_ADDRESS, I2C_CLIENT_END, I2C_CLIENT_END };
@@ -438,40 +443,15 @@ void gt1x_irq_disable(void)
 
 void gt1x_power_switch(s32 state)
 {
-#if !defined(CONFIG_MTK_LEGACY) || defined(CONFIG_ARCH_MT6580)
-	int ret = 0;
-#endif
-
 	GTP_GPIO_OUTPUT(GTP_RST_PORT, 0);
 	GTP_GPIO_OUTPUT(GTP_INT_PORT, 0);
-	msleep(20);
+	msleep(10);
 
 	switch (state) {
 	case SWITCH_ON:
 		if (power_flag == 0) {
 			GTP_DEBUG("Power switch on!");
-#if !defined(CONFIG_MTK_LEGACY)
-			/*enable regulator*/
-			ret = regulator_enable(tpd->reg);
-			if (ret)
-				GTP_ERROR("regulator_enable() failed!\n");
-#else
-#ifdef TPD_POWER_SOURCE_CUSTOM
-#ifdef CONFIG_ARCH_MT6580
-			/*set 2.8v*/
-			ret = regulator_set_voltage(tpd->reg,
-					2800000, 2800000);
-			if (ret)
-				GTP_DEBUG("regulator_set_voltage() failed!\n");
-			/*enable regulator*/
-			ret = regulator_enable(tpd->reg);
-			if (ret)
-				GTP_DEBUG("regulator_enable() failed!\n");
-#else
-			hwPowerOn(TPD_POWER_SOURCE_CUSTOM, VOL_2800, "TP");
-#endif
-#endif
-#endif
+			gpiod_set_raw_value(gpio_to_desc(tpd_en_gpio), 1);
 			power_flag = 1;
 		} else {
 			/*GTP_DEBUG("Power already is on!");*/
@@ -480,23 +460,7 @@ void gt1x_power_switch(s32 state)
 	case SWITCH_OFF:
 		if (power_flag == 1) {
 			GTP_DEBUG("Power switch off!");
-#if !defined(CONFIG_MTK_LEGACY)
-			/*disable regulator*/
-			ret = regulator_disable(tpd->reg);
-			if (ret)
-				GTP_ERROR("regulator_disable() failed!\n");
-#else
-#ifdef TPD_POWER_SOURCE_CUSTOM
-#ifdef CONFIG_ARCH_MT6580
-			/*disable regulator*/
-			ret = regulator_disable(tpd->reg);
-			if (ret)
-				GTP_DEBUG("regulator_disable() failed!\n");
-#else
-			hwPowerDown(TPD_POWER_SOURCE_CUSTOM, "TP");
-#endif
-#endif
-#endif
+			gpiod_set_raw_value(gpio_to_desc(tpd_en_gpio), 0);
 			power_flag = 0;
 		} else {
 			/*GTP_DEBUG("Power already is off!");*/
@@ -565,7 +529,7 @@ void gt1x_auto_update_done(void)
 	tpd_pm_flag = 1;
 	wake_up(&pm_waiter);
 }
-#if CONFIG_GTP_AUTO_UPDATE
+#ifdef CONFIG_GTP_AUTO_UPDATE
 int gt1x_pm_notifier(struct notifier_block *nb, unsigned long val, void *ign)
 {
 	switch (val) {
@@ -598,8 +562,21 @@ static int tpd_registration(void *client)
 {
 	s32 err = 0;
 	s32 idx = 0;
+	struct device_node *node = NULL;
 
 	gt1x_i2c_client = client;
+
+	node = of_find_compatible_node(NULL, NULL, "mediatek,touch");
+	if (node) {
+		tpd_en_gpio = of_get_named_gpio(node, "gpio-en-std", 0);
+		if (tpd_en_gpio < 0) {
+			GTP_ERROR("%s: get gt1151qm en GPIO failed (%d)", __func__, tpd_en_gpio);
+			return 0;
+		}
+	} else {
+		GTP_ERROR("%s : get gpio num err.", __func__);
+		return 0;
+	}
 
 	if (gt1x_init()) {
 		/* TP resolution == LCD resolution,
@@ -641,9 +618,11 @@ static int tpd_registration(void *client)
 		err = PTR_ERR(update_thread);
 		GTP_INFO(" failed to create auto-update thread: %d\n", err);
 	}
+#ifdef CONFIG_GTP_AUTO_UPDATE
 	pm_notifier_block.notifier_call = gt1x_pm_notifier;
 	pm_notifier_block.priority = 0;
 	register_pm_notifier(&pm_notifier_block);
+#endif
 #ifdef CONFIG_MTK_LENS
 	AF_PowerDown();
 #endif
@@ -657,10 +636,11 @@ static s32 tpd_i2c_probe(struct i2c_client *client,
 	/*int count = 0;*/
 
 	GTP_INFO("%s start.", __func__);
-#ifdef CONFIG_MTK_BOOT
-	if (get_boot_mode() == RECOVERY_BOOT)
-		return 0;
-#endif
+
+	// FIXME: hack done to match Titan Pocket stock kernel/dtb
+	client->addr = 0x14;
+	GTP_INFO("Ignoring DT-provided I2C address, forcing 0x%x", client->addr);
+
 	probe_thread = kthread_run(tpd_registration,
 					(void *)client, "tpd_probe");
 	if (IS_ERR(probe_thread)) {
@@ -997,7 +977,6 @@ static int tpd_i2c_remove(struct i2c_client *client)
 static int tpd_local_init(void)
 {
 #if !defined CONFIG_MTK_LEGACY
-	int ret;
 
 	GTP_INFO("Device Tree get regulator!");
 #if defined(CONFIG_MACH_MT6759) || defined(CONFIG_ARCH_MT6758)
@@ -1008,13 +987,6 @@ static int tpd_local_init(void)
 	if (IS_ERR(tpd->reg)) {
 		GTP_ERROR("regulator_get() failed!\n");
 		return PTR_ERR(tpd->reg);
-	}
-
-	/*set 2.8v*/
-	ret = regulator_set_voltage(tpd->reg, 2800000, 2800000);
-	if (ret) {
-		GTP_ERROR("regulator_set_voltage(%d) failed!\n", ret);
-		return -1;
 	}
 #endif
 #ifdef TPD_POWER_SOURCE_CUSTOM
@@ -1215,7 +1187,7 @@ static void tpd_resume(struct device *h)
 }
 
 static struct tpd_driver_t tpd_device_driver = {
-	.tpd_device_name = "gt9xx",
+	.tpd_device_name = "gt1151qm",
 	.tpd_local_init = tpd_local_init,
 	.suspend = tpd_suspend,
 	.resume = tpd_resume,
@@ -1287,7 +1259,7 @@ static int __init tpd_driver_init(void)
 /* should never be called */
 static void __exit tpd_driver_exit(void)
 {
-	GTP_INFO("MediaTek gt91xx touch panel driver exit\n");
+	GTP_INFO("MediaTek gt1151qm touch panel driver exit\n");
 	tpd_driver_remove(&tpd_device_driver);
 }
 

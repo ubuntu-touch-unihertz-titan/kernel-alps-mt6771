@@ -77,10 +77,8 @@ extern int tpd_em_log;
 
 #define CFG_GROUP_LEN(p_cfg_grp)  (ARRAY_SIZE(p_cfg_grp) / sizeof(p_cfg_grp[0]))
 
-#ifdef CONFIG_GTP_CUSTOM_CFG
 #define GTP_INT_TRIGGER  1	/*0:Rising 1:Falling*/
 #define GTP_WAKEUP_LEVEL 1
-#endif
 
 #ifdef CONFIG_MTK_LCM_PHYSICAL_ROTATION_HW
 #ifdef CONFIG_TOUCHSCREEN_PHYSICAL_ROTATION_WITH_LCM
