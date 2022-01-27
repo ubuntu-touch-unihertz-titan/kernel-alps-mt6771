@@ -118,6 +118,55 @@ int display_bias_enable(void)
 }
 EXPORT_SYMBOL(display_bias_enable);
 
+int agold_display_bias_enable(int pos_factor, int neg_factor)
+{
+	int ret = 0;
+	int retval = 0;
+    int vol = 0;
+
+	display_bias_regulator_init();
+
+	/* set voltage with min & max*/
+    vol = pos_factor * 100000 + 4000000;
+	ret = regulator_set_voltage(disp_bias_pos, vol, vol);
+	if (ret < 0)
+		pr_info("set voltage disp_bias_pos fail, ret = %d\n", ret);
+	retval |= ret;
+
+	vol = neg_factor * 100000 + 4000000;
+	ret = regulator_set_voltage(disp_bias_neg, vol, vol);
+	if (ret < 0)
+		pr_info("set voltage disp_bias_neg fail, ret = %d\n", ret);
+	retval |= ret;
+
+	/* get voltage */
+	ret = regulator_get_voltage(disp_bias_pos);
+	if (ret < 0)
+		pr_info("get voltage disp_bias_pos fail\n");
+	pr_debug("pos voltage = %d\n", ret);
+
+	ret = regulator_get_voltage(disp_bias_neg);
+	if (ret < 0)
+		pr_info("get voltage disp_bias_neg fail\n");
+	pr_debug("neg voltage = %d\n", ret);
+
+	/* enable regulator */
+	ret = regulator_enable(disp_bias_pos);
+	if (ret < 0)
+		pr_info("enable regulator disp_bias_pos fail, ret = %d\n",
+			ret);
+	retval |= ret;
+
+	ret = regulator_enable(disp_bias_neg);
+	if (ret < 0)
+		pr_info("enable regulator disp_bias_neg fail, ret = %d\n",
+			ret);
+	retval |= ret;
+
+	return retval;
+}
+EXPORT_SYMBOL(agold_display_bias_enable);
+
 int display_bias_disable(void)
 {
 	int ret = 0;

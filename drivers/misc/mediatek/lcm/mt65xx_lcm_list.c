@@ -1300,6 +1300,10 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 #if defined(HX83102P_WUXGA2000_DSI_VDO_BOE)
 	&hx83102p_wuxga2000_dsi_vdo_boe_lcm_drv,
 #endif
+
+#if defined(R63308_CASCADEMDZ40)
+	&R63308_CASCADEMDZ40_lcm_drv,
+#endif
 };
 
 unsigned char lcm_name_list[][128] = {
@@ -1379,6 +1383,10 @@ unsigned char lcm_name_list[][128] = {
 
 #if defined(NT35695B_FHD_DSI_VDO_AUO_RT5081_HDP_20_9)
 	"nt35695B_fhd_dsi_vdo_auo_rt5081_hdp_20_9_drv",
+#endif
+
+#if defined(R63308_CASCADEMDZ40)
+	"R63308_CASCADEMDZ40",
 #endif
 };
 
