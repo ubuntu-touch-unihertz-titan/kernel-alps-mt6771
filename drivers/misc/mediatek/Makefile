@@ -29,6 +29,8 @@ obj-$(CONFIG_MMPROFILE) += mmp/
 obj-$(CONFIG_MTK_BASE_POWER) += base/
 obj-$(CONFIG_MTK_SERIAL)	+= uart/
 obj-$(CONFIG_MTK_PMIC_NEW_ARCH)	+= pmic/
+obj-$(CONFIG_MTK_AW9523) += aw9523/
+
 obj-$(CONFIG_MTK_M4U)   += m4u/
 obj-$(CONFIG_MTK_PSEUDO_M4U)   += pseudo_m4u/
 obj-$(CONFIG_MTK_ICE_DEBUG) += ice_debug/
