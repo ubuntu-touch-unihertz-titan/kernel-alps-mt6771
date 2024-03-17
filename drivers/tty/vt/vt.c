@@ -182,7 +182,7 @@ int console_blanked;
 static int vesa_blank_mode; /* 0:none 1:suspendV 2:suspendH 3:powerdown */
 static int vesa_off_interval;
 static int blankinterval;
-core_param(consoleblank, blankinterval, int, 0444);
+module_param(blankinterval, int, 0444);
 
 static DECLARE_WORK(console_work, console_callback);
 static DECLARE_WORK(con_driver_unregister_work, con_driver_unregister_callback);
@@ -3054,7 +3054,9 @@ static int __init con_init(void)
 #endif
 	return 0;
 }
+#ifndef MODULE
 console_initcall(con_init);
+#endif
 
 static const struct tty_operations con_ops = {
 	.install = con_install,
@@ -3096,6 +3098,23 @@ ATTRIBUTE_GROUPS(vt_dev);
 
 int __init vty_init(const struct file_operations *console_fops)
 {
+#ifdef MODULE
+	struct tty_struct *tty;
+	struct class *tty_class;
+	int minor;
+
+	for (minor = 64; minor < 255; minor++) {
+		tty = tty_kopen(MKDEV(TTY_MAJOR, minor));
+		if (!IS_ERR(tty))
+			break;
+	}
+	if (IS_ERR(tty)) {
+		pr_warn("vty_init: failed to get pointer to tty_class struct\n");
+		goto tty0dev_fail;
+	}
+	tty_class = tty->dev->class;
+	tty_kclose(tty);
+#endif
 	cdev_init(&vc0_cdev, console_fops);
 	if (cdev_add(&vc0_cdev, MKDEV(TTY_MAJOR, 0), 1) ||
 	    register_chrdev_region(MKDEV(TTY_MAJOR, 0), 1, "/dev/vc/0") < 0)
@@ -3104,6 +3123,7 @@ int __init vty_init(const struct file_operations *console_fops)
 					    MKDEV(TTY_MAJOR, 0), NULL,
 					    vt_dev_groups, "tty0");
 	if (IS_ERR(tty0dev))
+tty0dev_fail:
 		tty0dev = NULL;
 
 	vcs_init();
@@ -3516,6 +3536,7 @@ EXPORT_SYMBOL(con_is_bound);
  * Zero on success, nonzero if a failure occurred when trying to prepare
  * the console for the debugger.
  */
+#ifndef MODULE
 int con_debug_enter(struct vc_data *vc)
 {
 	int ret = 0;
@@ -3590,6 +3611,7 @@ int con_debug_leave(void)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(con_debug_leave);
+#endif /* MODULE */
 
 static int do_register_con_driver(const struct consw *csw, int first, int last)
 {
@@ -3815,7 +3837,9 @@ static int __init vtconsole_class_init(void)
 
 	return 0;
 }
+#ifndef MODULE
 postcore_initcall(vtconsole_class_init);
+#endif
 
 #endif
 
@@ -4371,3 +4395,22 @@ EXPORT_SYMBOL(global_cursor_default);
 #ifndef VT_SINGLE_DRIVER
 EXPORT_SYMBOL(give_up_console);
 #endif
+
+#ifdef MODULE
+/* Implemented in printk.c, but not exported. Used in WARN_CONSOLE_UNLOCKED */
+int is_console_locked(void)
+{
+	return 1;
+}
+
+static int __init vt_module_init(void)
+{
+	conswitchp = &dummy_con;
+	vty_init(NULL);
+    return 0;
+}
+device_initcall(vt_module_init);
+
+MODULE_LICENSE("GPL");
+
+#endif // MODULE

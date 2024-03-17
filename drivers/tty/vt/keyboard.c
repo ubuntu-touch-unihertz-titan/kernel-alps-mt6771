@@ -476,10 +476,12 @@ static void fn_caps_on(struct vc_data *vc)
 
 static void fn_show_ptregs(struct vc_data *vc)
 {
+#ifndef MODULE
 	struct pt_regs *regs = get_irq_regs();
 
 	if (regs)
 		show_regs(regs);
+#endif
 }
 
 static void fn_hold(struct vc_data *vc)
@@ -578,17 +580,23 @@ static void fn_scroll_back(struct vc_data *vc)
 
 static void fn_show_mem(struct vc_data *vc)
 {
+#ifndef MODULE
 	show_mem(0, NULL);
+#endif
 }
 
 static void fn_show_state(struct vc_data *vc)
 {
+#ifndef MODULE
 	show_state();
+#endif
 }
 
 static void fn_boot_it(struct vc_data *vc)
 {
+#ifndef MODULE
 	ctrl_alt_del();
+#endif
 }
 
 static void fn_compose(struct vc_data *vc)
@@ -1596,12 +1604,16 @@ int __init kbd_init(void)
 
 	kbd_init_leds();
 
+	/* VT-as-module hack: we only care about dummy VT to keep systemd units happy,
+	 * no need to handle keyboard input */
+#ifndef MODULE
 	error = input_register_handler(&kbd_handler);
 	if (error)
 		return error;
 
 	tasklet_enable(&keyboard_tasklet);
 	tasklet_schedule(&keyboard_tasklet);
+#endif
 
 	return 0;
 }

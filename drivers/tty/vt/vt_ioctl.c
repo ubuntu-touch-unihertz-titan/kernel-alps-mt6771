@@ -1060,6 +1060,7 @@ void reset_vc(struct vc_data *vc)
 
 void vc_SAK(struct work_struct *work)
 {
+#ifndef MODULE
 	struct vc *vc_con =
 		container_of(work, struct vc, SAK_work);
 	struct vc_data *vc;
@@ -1079,6 +1080,7 @@ void vc_SAK(struct work_struct *work)
 		reset_vc(vc);
 	}
 	console_unlock();
+#endif
 }
 
 #ifdef CONFIG_COMPAT
@@ -1449,6 +1451,7 @@ int vt_move_to_console(unsigned int vt, int alloc)
 	return prev;
 }
 
+#ifndef MODULE
 /*
  * Normally during a suspend, we allocate a new console and switch to it.
  * When we resume, we switch back to the original console.  This switch
@@ -1463,3 +1466,4 @@ void pm_set_vt_switch(int do_switch)
 	console_unlock();
 }
 EXPORT_SYMBOL(pm_set_vt_switch);
+#endif /* MODULE */

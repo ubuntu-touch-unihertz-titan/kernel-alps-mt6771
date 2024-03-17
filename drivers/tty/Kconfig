@@ -10,7 +10,7 @@ config TTY
 if TTY
 
 config VT
-	bool "Virtual terminal" if EXPERT
+	tristate "Virtual terminal" if EXPERT
 	depends on !S390 && !UML
 	select INPUT
 	default y
@@ -51,7 +51,7 @@ config CONSOLE_TRANSLATIONS
 
 config VT_CONSOLE
 	bool "Support for console on virtual terminal" if EXPERT
-	depends on VT
+	depends on VT=y
 	default y
 	---help---
 	  The system console is the device which receives all kernel messages
@@ -73,7 +73,7 @@ config VT_CONSOLE
 
 config VT_CONSOLE_SLEEP
 	def_bool y
-	depends on VT_CONSOLE && PM_SLEEP
+	depends on VT=y && VT_CONSOLE && PM_SLEEP
 
 config HW_CONSOLE
 	bool
