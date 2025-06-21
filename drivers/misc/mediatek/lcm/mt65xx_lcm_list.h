@@ -347,6 +347,7 @@ extern struct LCM_DRIVER ft8201_wuxga_dsi_vdo_boe_lcm_drv;
 extern struct LCM_DRIVER ft8756_fhdp_dsi_vdo_auo_rt4801_lcm_drv;
 extern struct LCM_DRIVER hx83102p_wuxga2000_dsi_vdo_boe_lcm_drv;
 extern struct LCM_DRIVER R63308_CASCADEMDZ40_lcm_drv;
+extern struct LCM_DRIVER R63308_ZMK42_lcm_drv;
 
 #ifdef BUILD_LK
 extern void mdelay(unsigned long msec);

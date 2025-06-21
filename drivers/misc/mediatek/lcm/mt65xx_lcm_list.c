@@ -1304,6 +1304,10 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 #if defined(R63308_CASCADEMDZ40)
 	&R63308_CASCADEMDZ40_lcm_drv,
 #endif
+
+#if defined(R63308_ZMK42)
+	&R63308_ZMK42_lcm_drv,
+#endif
 };
 
 unsigned char lcm_name_list[][128] = {
@@ -1387,6 +1391,10 @@ unsigned char lcm_name_list[][128] = {
 
 #if defined(R63308_CASCADEMDZ40)
 	"R63308_CASCADEMDZ40",
+#endif
+
+#if defined(R63308_ZMK42)
+	"R63308_ZMK42",
 #endif
 };
 
