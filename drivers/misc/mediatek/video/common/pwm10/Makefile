@@ -18,6 +18,12 @@ endif
 
 obj-y += ddp_pwm.o
 
+# Titan Slim hacks from stock kernel
+ifeq ($(CONFIG_ARCH_MTK_PROJECT), "g83v71c2k_dfl_eea")
+ccflags-y += -DUSE_IS31FL_LED=1 -Wno-error=unused-function
+obj-y += is31fl.o is31fl_init.o
+endif
+
 ccflags-y += \
 				-I$(srctree)/drivers/misc/mediatek/video/include     \
 				-I$(srctree)/drivers/misc/mediatek/video/common/IPv1     \

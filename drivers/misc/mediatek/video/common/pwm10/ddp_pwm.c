@@ -125,6 +125,15 @@ static atomic_t g_pwm_is_change_state[PWM_TOTAL_MODULE_NUM] = {
 
 static int g_pwm_led_mode = MT65XX_LED_MODE_NONE;
 
+#ifdef USE_IS31FL_LED
+/* Global state for backlight control */
+static int g_pwm_backlight_off_flag = 0;
+
+/* Placeholder function declarations - to be implemented later */
+extern void agold_is31fl_bled(unsigned int level);
+extern void agold_gpio_set(unsigned int pin, unsigned int value);
+#endif
+
 struct PWM_LOG {
 	int value;
 	unsigned long tsec;
@@ -580,7 +589,9 @@ int disp_pwm_set_backlight_cmdq(enum disp_pwm_id_t id,
 {
 #ifndef CONFIG_FPGA_EARLY_PORTING
 	/* PWM is excluded from FPGA bitfile */
+#ifndef USE_IS31FL_LED
 	unsigned long reg_base;
+#endif
 	int old_pwm;
 	int index;
 	int abs_diff;
@@ -620,6 +631,24 @@ int disp_pwm_set_backlight_cmdq(enum disp_pwm_id_t id,
 
 		level_1024 = disp_pwm_level_remap(id, level_1024);
 
+#ifdef USE_IS31FL_LED
+		/* Modified hardware control for g83v71c2k_dfl_eea project */
+		if (level_1024 < 1) {
+			/* Turn off backlight */
+			agold_is31fl_bled((unsigned int)level_1024);
+			agold_gpio_set(43, 0);
+			g_pwm_backlight_off_flag = 1;
+			return 0;
+		}
+
+		/* Turn on backlight */
+		if (g_pwm_backlight_off_flag == 1) {
+			agold_gpio_set(43, 1);
+			g_pwm_backlight_off_flag = 0;
+		}
+		agold_is31fl_bled((unsigned int)level_1024);
+		return 0;
+#else
 		reg_base = pwm_get_reg_base(id);
 
 		if (level_1024 > 0) {
@@ -637,6 +666,7 @@ int disp_pwm_set_backlight_cmdq(enum disp_pwm_id_t id,
 
 		DISP_REG_MASK(cmdq, reg_base + DISP_PWM_COMMIT_OFF, 1, ~0);
 		DISP_REG_MASK(cmdq, reg_base + DISP_PWM_COMMIT_OFF, 0, ~0);
+#endif
 	}
 
 	if (g_pwm_led_mode == MT65XX_LED_MODE_CUST_BLS_PWM &&
