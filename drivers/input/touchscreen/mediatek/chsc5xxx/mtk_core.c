@@ -6,23 +6,20 @@
 #include <linux/ide.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/of_gpio.h>
 #include <linux/irq.h>
 #include <linux/of_irq.h>
 #include <linux/i2c.h>
-#include <linux/regulator/consumer.h>
+#include <linux/delay.h>
 
 #include "semi_touch_interface.h"
 #include "tpd.h"
 
-#define semi_io_free(pin)                   do{ if(gpio_is_valid(pin)) gpio_free(pin); }while(0)
-#if defined(CONFIG_PRIZE_HARDWARE_INFO)
-#include "../../../misc/mediatek/hardware_info/hardware_info.h"
-extern struct hardware_info current_tp_info;
-#endif
+#define semi_io_free(pin) do { if (gpio_is_valid(pin)) gpio_free(pin); } while (0)
 static const struct of_device_id sm_of_match[] =
 {
-    {.compatible = "mediatek,chsc_cap_touch", },
+    {.compatible = "mediatek,cap_touch", },
     {}
 };
 
@@ -50,83 +47,45 @@ int semi_touch_get_irq(int rst_pin)
     return irq_no;
 }
 
-struct regulator *reg_vdd = NULL;
-struct regulator *reg_vio = NULL;
-
-int semi_touch_power_ctrl(unsigned char level)
-{
-    int ret = SEMI_DRV_ERR_OK;
-    static unsigned char power_status = 0; //off
-
-    if(1 == level && 0 == power_status){
-        power_status = 1;
-        if(!IS_ERR_OR_NULL(reg_vdd)){
-            ret = regulator_enable(reg_vdd);
-            check_return_if_fail(ret, NULL);
-        }
-        if(!IS_ERR_OR_NULL(reg_vio)){
-            ret = regulator_enable(reg_vio);
-            check_return_if_fail(ret, NULL);
-        }
-        if(st_dev.rst_pin > 0){
-            semi_io_direction_out(st_dev.rst_pin, 1);
-        }
-
-        kernel_log_d("vdd power up...\n");
-    }else if(0 == level && 1 == power_status){
-        power_status = 0;
-        if(!IS_ERR_OR_NULL(reg_vdd)){
-            ret = regulator_disable(reg_vdd);
-            check_return_if_fail(ret, NULL);
-        }
-        if(!IS_ERR_OR_NULL(reg_vio)){
-            ret = regulator_disable(reg_vio);
-            check_return_if_fail(ret, NULL);
-        }
-        if(st_dev.rst_pin > 0){
-            semi_io_direction_out(st_dev.rst_pin, 0);
-        }
-
-        kernel_log_d("vdd power down...\n");
-        enter_suspend_gate(st_dev.stc.ctp_run_status);
-    }else{
-        //don't care
-    }
-
-    return ret;
-}
-
 int semi_touch_power_exit(void)
 {
     int ret = SEMI_DRV_ERR_OK;
-
-    semi_touch_power_ctrl(0);
-
-    if(!IS_ERR_OR_NULL(reg_vdd)){
-        ret = regulator_set_voltage(reg_vdd, 0, 0);
-        check_return_if_fail(ret, NULL);
-        regulator_put(reg_vdd);
-    }
-    if(!IS_ERR_OR_NULL(reg_vio)){
-        ret = regulator_set_voltage(reg_vio, 0, 0);
-        check_return_if_fail(ret, NULL);
-        regulator_put(reg_vio);
-    }
-
     return ret;
 }
 
-int semi_touch_power_init(struct i2c_client *client)
+int semi_touch_power_init()
 {
     int ret = SEMI_DRV_ERR_OK;
-    reg_vdd = regulator_get(&client->dev, "vdd");
-    if(IS_ERR_OR_NULL(reg_vdd)){
-        kernel_log_d("vdd regulator dts not match\n");
+    struct device_node *node = NULL;
+    int gpio_en_std = -1;
+    struct gpio_desc *desc = NULL;
+
+    // Find the touch device node
+    node = of_find_compatible_node(NULL, NULL, "mediatek,touch");
+    if (!node) {
+        kernel_log_d("Cannot find mediatek,touch compatible node\n");
+        return -SEMI_DRV_ERR_NOT_MATCH;
     }
 
-    reg_vio = regulator_get(&client->dev, "vio");
-    if(IS_ERR_OR_NULL(reg_vio)){
-        kernel_log_d("vio regulator dts not match\n");
+    // Get the gpio-en-std GPIO
+    gpio_en_std = of_get_named_gpio_flags(node, "gpio-en-std", 0, NULL);
+    if (gpio_en_std < 0) {
+        kernel_log_d("Cannot get gpio-en-std GPIO\n");
+        return -SEMI_DRV_ERR_NOT_MATCH;
+    }
+
+    if (gpio_en_std == 0) {
+        return -SEMI_DRV_INVALID_PARAM;
+    }
+
+    // Convert GPIO to descriptor and set it high
+    desc = gpio_to_desc(gpio_en_std);
+    if (desc) {
+        gpiod_set_raw_value(desc, 1);
+        kernel_log_d("Set gpio-en-std (GPIO %d) to high\n", gpio_en_std);
+    } else {
+        kernel_log_d("Failed to get GPIO descriptor for gpio-en-std\n");
+        return -SEMI_DRV_ERR_NOT_MATCH;
     }
 
     return ret;
@@ -457,13 +416,6 @@ static ssize_t chsc_version_hardinfo()
     ret = semi_touch_read_bytes(0x20000000 + 0x80, readBuffer, 8);
     check_return_if_fail(ret, NULL);
 
-    #if defined(CONFIG_PRIZE_HARDWARE_INFO)
-	    sprintf(current_tp_info.chip, "%s","CHSC5448");
-		sprintf(current_tp_info.vendor, "0x%02x",readBuffer[1]);
-		sprintf(current_tp_info.id,"0x%02x",(readBuffer[3] << 8) + readBuffer[2]);
-	   	sprintf(current_tp_info.more,"touchpanel");
-    #endif
-
  //   szCopy += sprintf(szCopy, "Ic type %s\n", mapping_ic_from_type(readBuffer[0]));
 
  //   szCopy += sprintf(szCopy, "config version is %02X\n", readBuffer[1]);
@@ -486,9 +438,13 @@ static ssize_t chsc_version_hardinfo()
 static int semi_touch_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
     int ret = 0;
+    unsigned short original_addr = client->addr;
 
-    semi_touch_power_init(client);
-    semi_touch_power_ctrl( 1 );
+    // Set I2C address to match stock driver behavior
+    client->addr = 0x2E;
+    kernel_log_d("Changed client->addr from 0x%02x to 0x%02x\n", original_addr, client->addr);
+
+    semi_touch_power_init();
 
     ret = semi_touch_init(client);
     if(-SEMI_DRV_ERR_HAL_IO == ret)
@@ -539,11 +495,9 @@ static int semi_touch_local_init(void)
 {
     int ret = 0;
 
-    ret = semi_touch_power_init();
-    check_return_if_fail(ret, NULL);
-
     ret = i2c_add_driver(&sm_touch_driver);
     check_return_if_fail(ret, NULL);
+    tpd_type_cap = 1;
 
     return ret;
 }
@@ -631,6 +585,7 @@ static int __init tpd_driver_init(void)
 {
     int ret = 0;
 
+    kernel_log_d("CHSC touch panel driver init\n");
     tpd_get_dts_info();
     ret = tpd_driver_add(&tpd_device_driver);
     check_return_if_fail(ret, NULL);

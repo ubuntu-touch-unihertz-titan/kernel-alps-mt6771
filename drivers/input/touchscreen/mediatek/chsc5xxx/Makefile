@@ -1,5 +1,7 @@
 #semitouch touchpanel driver
 
+ccflags-y += -I$(srctree)/drivers/input/touchscreen/mediatek/
+
 obj-$(CONFIG_TOUCHSCREEN_MTK_CHSC5432)	    += semi_touch_driver.o
 
 semi_touch_driver-objs += basic_util.o

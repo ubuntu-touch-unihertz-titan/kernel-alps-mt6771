@@ -18,6 +18,7 @@
 #include <linux/i2c.h>
 
 #include "semi_touch_interface.h"
+#include "tpd.h"
 
 struct sm_touch_dev st_dev =
 {
@@ -30,19 +31,13 @@ static int input_device_init(struct sm_touch_dev *st_dev)
 {
     int ret = 0;
 
-    st_dev->input = devm_input_allocate_device(&st_dev->client->dev);
-    check_return_if_fail(st_dev->input, NULL);
+    // Use MediaTek TPD framework's input device
+    st_dev->input = tpd->dev;
+    if (!st_dev->input) {
+        kernel_log_d("MediaTek TPD input device not available\n");
+        return -SEMI_DRV_ERR_NOT_MATCH;
+    }
 
-    st_dev->input->name = client->name;
-    st_dev->input->id.bustype = BUS_I2C;
-    st_dev->input->dev.parent = &client->dev;
-
-    st_dev->input->evbit[0] = BIT_MASK(EV_SYN) | BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
-    st_dev->input->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
-    __set_bit(INPUT_PROP_DIRECT, st_dev->input->propbit);
-
-    //input_set_abs_params(st_dev->input, ABS_X, 0, SEMI_TOUCH_SOLUTION_X, 0, 0);
-    //input_set_abs_params(st_dev->input, ABS_Y, 0, SEMI_TOUCH_SOLUTION_Y, 0, 0);
     input_set_abs_params(st_dev->input, ABS_MT_POSITION_X, 0, SEMI_TOUCH_SOLUTION_X, 0, 0);
     input_set_abs_params(st_dev->input, ABS_MT_POSITION_Y, 0, SEMI_TOUCH_SOLUTION_Y, 0, 0);
     input_set_abs_params(st_dev->input, ABS_MT_WIDTH_MAJOR, 0, 255, 0, 0);
@@ -53,8 +48,7 @@ static int input_device_init(struct sm_touch_dev *st_dev)
 #elif MULTI_PROTOCOL_TYPE_B == MULTI_PROTOCOL_TYPE
     input_mt_init_slots(st_dev->input, SEMI_TOUCH_MAX_POINTS, INPUT_MT_DIRECT /*1*/);
 #endif
-
-    ret = input_register_device(st_dev->input);
+    ret = semi_touch_i2c_init();
     check_return_if_fail(ret, NULL);
 
     return 0;
@@ -65,11 +59,8 @@ static int input_device_deinit(void)
     int ret = 0;
 
     ret = semi_touch_i2c_i2c_exit();
-
-    if(st_dev.input)
-    {
-        input_unregister_device(st_dev.input);
-    }
+    // Input device is managed by MediaTek TPD framework, so we don't unregister it
+    st_dev.input = NULL;
 
     return ret;
 }
@@ -347,13 +338,10 @@ int semi_touch_init(struct i2c_client *client)
     st_dev.hal.hal_read_fun = i2c_read_bytes;
     st_dev.hal.hal_param = client;
 
-    ret = semi_touch_i2c_init();
+    ret = input_device_init(&st_dev);
     check_return_if_fail(ret, NULL);
 
     ret = semi_touch_device_prob();
-    check_return_if_fail(ret, NULL);
-
-    ret = input_device_init(&st_dev);
     check_return_if_fail(ret, NULL);
 
     ret = semi_touch_create_apk_proc(&st_dev);
