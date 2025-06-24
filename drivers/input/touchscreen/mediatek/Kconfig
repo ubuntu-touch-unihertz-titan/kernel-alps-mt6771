@@ -193,4 +193,13 @@ config TOUCHSCREEN_MTK_GT9157
 
 source "drivers/input/touchscreen/mediatek/GT9157/Kconfig"
 
+
+config TOUCHSCREEN_MTK_CHSC5432
+	bool "CHSC5432 for Mediatek package"
+	help
+	  Say Y here if you have CHSC5432 touch panel.
+	  If unsure, say N.
+
+source "drivers/input/touchscreen/mediatek/chsc5xxx/Kconfig"
+
 endif
