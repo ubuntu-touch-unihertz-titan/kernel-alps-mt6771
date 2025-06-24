@@ -13,6 +13,7 @@
 #include <linux/regulator/consumer.h>
 
 #include "semi_touch_interface.h"
+#include "tpd.h"
 
 #define semi_io_free(pin)                   do{ if(gpio_is_valid(pin)) gpio_free(pin); }while(0)
 #if defined(CONFIG_PRIZE_HARDWARE_INFO)
@@ -21,7 +22,7 @@ extern struct hardware_info current_tp_info;
 #endif
 static const struct of_device_id sm_of_match[] =
 {
-    {.compatible = "chipsemi,chsc_cap_touch", },
+    {.compatible = "mediatek,chsc_cap_touch", },
     {}
 };
 
@@ -31,49 +32,20 @@ static const struct i2c_device_id sm_ts_id[] =
     {}
 };
 
-int semi_touch_get_int(void)
-{
-    int int_gpio_no = 0;
-    struct device_node* of_node = NULL;
-    //of_node = of_find_node_by_name(NULL, "smtouch");
-    //check_return_if_zero(of_node, NULL);
-    of_node = of_find_matching_node(NULL, sm_of_match);
-    check_return_if_zero(of_node, NULL);
-
-    int_gpio_no = of_get_named_gpio(of_node, "chipsemi,int-gpio", 0);
-    check_return_if_fail(int_gpio_no, NULL);
-
-    gpio_request(int_gpio_no, "chsc_int_pin");
-
-    return int_gpio_no;
-
-    //return of_get_named_gpio(of_node, "chipsemi,int-gpio", 0);
-}
-
-int semi_touch_get_rst(void)
-{
-    int rst_gpio_no = 0;
-    struct device_node* of_node = NULL;
-    //of_node = of_find_node_by_name(NULL, "smtouch");
-    //check_return_if_zero(of_node, NULL);
-    of_node = of_find_matching_node(NULL, sm_of_match);
-    check_return_if_zero(of_node, NULL);
-
-    rst_gpio_no = of_get_named_gpio(of_node, "chipsemi,rst-gpio", 0);
-    check_return_if_fail(rst_gpio_no, NULL);
-
-    gpio_request(rst_gpio_no, "chsc_rst_pin");
-
-    return rst_gpio_no;
-}
-
 int semi_touch_get_irq(int rst_pin)
 {
     int irq_no = 0;
+    struct device_node* node = NULL;
+    unsigned int ints[2] = { 0, 0 };
 
-    gpio_set_debounce(rst_pin, 50);
+    node = of_find_matching_node(node, touch_of_match);
+    check_return_if_zero(node, NULL);
 
-    irq_no = gpio_to_irq(rst_pin);
+    of_property_read_u32_array(node, "debounce", ints, ARRAY_SIZE(ints));
+    gpio_set_debounce(ints[0], ints[1]);
+
+    irq_no = irq_of_parse_and_map(node, 0);
+    check_return_if_fail(irq_no, NULL);
 
     return irq_no;
 }
@@ -525,6 +497,8 @@ static int semi_touch_probe(struct i2c_client *client, const struct i2c_device_i
         check_return_if_fail(ret, NULL);
     }
 
+    tpd_load_status = 1;
+
     chsc_version_hardinfo();
     kernel_log_d("probe finished(result:%d) driver ver(%s)\r\n", ret, CHSC_DRIVER_VERSION);
 
@@ -540,7 +514,41 @@ static int semi_touch_remove(struct i2c_client *client)
     return ret;
 }
 
-int semi_touch_suspend_entry(struct device* dev)
+static int semi_touch_i2c_detect(struct i2c_client *client, struct i2c_board_info *info)
+{
+    strcpy(info->type, TPD_DEVICE);
+
+    return 0;
+}
+
+static struct i2c_driver sm_touch_driver =
+{
+    .driver =
+    {
+        .owner = THIS_MODULE,
+        .name = "semi_touch",
+        .of_match_table = of_match_ptr(sm_of_match),
+    },
+    .id_table = sm_ts_id,
+    .probe = semi_touch_probe,
+    .remove = semi_touch_remove,
+    .detect = semi_touch_i2c_detect,
+};
+
+static int semi_touch_local_init(void)
+{
+    int ret = 0;
+
+    ret = semi_touch_power_init();
+    check_return_if_fail(ret, NULL);
+
+    ret = i2c_add_driver(&sm_touch_driver);
+    check_return_if_fail(ret, NULL);
+
+    return ret;
+}
+
+void semi_touch_suspend_entry(struct device* dev)
 {
     //struct i2c_client *client = st_dev.client;
 
@@ -549,7 +557,7 @@ int semi_touch_suspend_entry(struct device* dev)
         if(is_proximity_activate(st_dev.stc.ctp_run_status))
         {
             kernel_log_d("proximity is active, so fake suspend...");
-            return SEMI_DRV_ERR_OK;
+            return;
         }
     }
 
@@ -569,11 +577,9 @@ int semi_touch_suspend_entry(struct device* dev)
         //disable_irq(client->irq);
         kernel_log_d("tpd real suspend...\n");
     }
-
-    return SEMI_DRV_ERR_OK;
 }
 
-int semi_touch_resume_entry(struct device* dev)
+void semi_touch_resume_entry(struct device* dev)
 {
     unsigned char bootCheckOk = 0;
     unsigned char glove_activity = is_glove_activate(st_dev.stc.ctp_run_status);
@@ -583,7 +589,7 @@ int semi_touch_resume_entry(struct device* dev)
         if(is_proximity_activate(st_dev.stc.ctp_run_status))
         {
             kernel_log_d("proximity is active, so fake resume...");
-            return SEMI_DRV_ERR_OK;
+            return;
         }
     }
     if(is_guesture_function_en(st_dev.stc.custom_function_en))
@@ -610,42 +616,34 @@ int semi_touch_resume_entry(struct device* dev)
         }
     }
     kernel_log_d("tpd_resume...\r\n");
-
-    return SEMI_DRV_ERR_OK;
 }
 
-static struct i2c_driver sm_touch_driver =
+static struct tpd_driver_t tpd_device_driver =
 {
-    .driver =
-    {
-        .owner = THIS_MODULE,
-        .name  = "semi_touch",
-        .of_match_table = of_match_ptr(sm_of_match),
-#if CONFIG_PM
-        .pm = &semi_touch_dev_pm_ops,
-#endif
-    },
-    .id_table = sm_ts_id,
-    .probe = semi_touch_probe,
-    .remove = semi_touch_remove,
+    .tpd_device_name = CHSC_DEVICE_NAME,
+    .tpd_local_init = semi_touch_local_init,
+    .suspend = semi_touch_suspend_entry,
+    .resume = semi_touch_resume_entry,
+
 };
 
-static int __init i2c_device_init(void)
+static int __init tpd_driver_init(void)
 {
     int ret = 0;
 
-    ret = i2c_add_driver(&sm_touch_driver);
+    tpd_get_dts_info();
+    ret = tpd_driver_add(&tpd_device_driver);
     check_return_if_fail(ret, NULL);
 
     return ret;
 }
 
-static void __exit i2c_device_exit(void)
+static void __exit tpd_driver_exit(void)
 {
-    i2c_del_driver(&sm_touch_driver);
+    tpd_driver_remove(&tpd_device_driver);
 }
 
-module_init(i2c_device_init);
-module_exit(i2c_device_exit);
+module_init(tpd_driver_init);
+module_exit(tpd_driver_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("wasim");

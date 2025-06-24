@@ -9,7 +9,7 @@
 #define SOC_PLATFORM_MTK                        0x0100
 #define SOC_PLATFROM_QUAL                       0x0200
 #define SOC_PLATFORM_SPRD                       0x0300
-#define SOC_PLATFORM_SELECT                     SOC_PLATFROM_QUAL
+#define SOC_PLATFORM_SELECT                     SOC_PLATFORM_MTK
 
 #define MULTI_PROTOCOL_TYPE_A                   0
 #define MULTI_PROTOCOL_TYPE_B                   1

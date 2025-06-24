@@ -29,7 +29,6 @@ struct sm_touch_dev st_dev =
 static int input_device_init(struct sm_touch_dev *st_dev)
 {
     int ret = 0;
-    struct i2c_client *client = st_dev->client;
 
     st_dev->input = devm_input_allocate_device(&st_dev->client->dev);
     check_return_if_fail(st_dev->input, NULL);
